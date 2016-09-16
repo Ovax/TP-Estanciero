@@ -37,7 +37,10 @@ class Juego {
         return jugadores.any({ jugador => jugador.tieneTodasLasPropiedades() }) 
     }
     method haceQueJuegue(unJugador) {
-        // TODO: HACERLO
+    	var casilleroInicial = 	unJugador.casilleroActual()
+        var dados			 = 	unJugador.tirarDados()
+        var casilleros		 = 	tablero.casillerosDesde(casilleroInicial, dados)
+        unJugador.moverseSobre(casilleros)
     }
 }
 
@@ -136,6 +139,7 @@ class Empresa inherits Propiedad {
 class Jugador {
 	var dinero
 	var propiedades = #{}
+	var casilleroActual = salida
 	
 	constructor(montoInicial) {
 		dinero = montoInicial
@@ -166,7 +170,13 @@ class Jugador {
 		dinero += monto
 	}
 	method moverseSobre(casilleros) {
-		casilleros.forEach({})
+		casilleros.forEach({propiedad => propiedad.paso(self)})
+		casilleros.asList()
+		casilleroActual = casilleros.last()
+		casilleroActual.cayo(self)
+	}
+	method casilleroActual() {
+		return casilleroActual
 	}
 }
 
