@@ -37,9 +37,9 @@ class Juego {
         return jugadores.any({ jugador => jugador.tieneTodasLasPropiedades() }) 
     }
     method haceQueJuegue(unJugador) {
-    	var casilleroInicial = 	unJugador.casilleroActual()
-        var dados			 = 	unJugador.tirarDados()
-        var casilleros		 = 	tablero.casillerosDesde(casilleroInicial, dados)
+    	var casilleroInicial	= 	unJugador.casilleroActual()
+        var dados		= 	unJugador.tirarDados()
+        var casilleros		= 	tablero.casillerosDesde(casilleroInicial, dados)
         unJugador.moverseSobre(casilleros)
     }
 }
@@ -82,7 +82,7 @@ class Propiedad {
 	method paso(unJugador)
 	method cayo(unJugador){
 		if(duenio == banco)		self.esCompradaPor(unJugador)
-		if(duenio != unJugador)	self.pagarRenta(unJugador)
+		if(duenio != unJugador)		self.pagarRenta(unJugador)
 	}
 	method pagarRenta(unJugador)
 }
