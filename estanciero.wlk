@@ -1,5 +1,6 @@
 object tablero {
-    var casilleros = new List()
+	var todasLasPropiedades = new List()
+	var casilleros = new List()
     
     method casillerosDesde(casilleroInicial, unNumero) {
         var inicio = self.indiceDeCasillero(casilleroInicial)
@@ -16,6 +17,15 @@ object tablero {
 	 	} else {
 	 		return self.indice(unCasillero, index + 1)
 	 	}
+ 	}
+ 	method empresas() {
+ 		return todasLasPropiedades.filter({propiedad => propiedad.sosEmpresa()})
+ 	}
+ 	method dueniosDeEmpresas() {
+ 		return self.empresas().map({empresa => empresa.duenio()}).asSet()
+ 	}
+ 	method aniadirPropiedades(unasPropiedades) {
+ 		todasLasPropiedades.addAll(unasPropiedades)
  	}
 }
 
@@ -37,30 +47,35 @@ class Juego {
         return jugadores.any({ jugador => jugador.tieneTodasLasPropiedades() }) 
     }
     method haceQueJuegue(unJugador) {
-    	var casilleroInicial	= 	unJugador.casilleroActual()
-        var dados		= 	unJugador.tirarDados()
-        var casilleros		= 	tablero.casillerosDesde(casilleroInicial, dados)
+    	var casilleroInicial = 	unJugador.casilleroActual()
+        var dados			 = 	unJugador.tirarDados()
+        var casilleros		 = 	tablero.casillerosDesde(casilleroInicial, dados)
         unJugador.moverseSobre(casilleros)
     }
 }
 
 class Provincia {
 	var campos = #{}
+	
+	constructor (losCampos) {
+		campos.addAll(losCampos)
+		losCampos.forEach({campo => campo.aniadirProvincia(self)})
+	}	
 	method duenios() {
-		return campos.map({campo => campo.duenio()})
+		return campos.map({campo => campo.duenio()}).asSet()
 	}
 	method cuantosCamposTiene(){
 		return campos.size()
 	}
+	method sePuedeConstruirEn(unCampo) {
+		return self.esMonopolioDe(unCampo.duenio()) 
+		and self.esConstruccionParejaPara(unCampo)
+	}
 	method esMonopolioDe(unJugador) {
-		return campos.all({campo => campo.duenio() == unJugador})
+		return self.duenios() == #{unJugador}
 	}
 	method esConstruccionParejaPara(unCampo) {
 		return campos.all({campo => campo.estancias() <= unCampo.estancias()})
-	}
-	method puedeConstruir(unJugador, unCampo) {
-		return self.esMonopolioDe(unJugador) 
-		and self.esConstruccionParejaPara(unCampo)
 	}
 }
 
@@ -70,21 +85,32 @@ class Propiedad {
 	
 	constructor(precioDeCompraInicial) {
 		valorPropiedad = precioDeCompraInicial
-	}
-
-	method esCompradaPor(unJugador) {
-		duenio = unJugador
-		duenio.pagar(valorPropiedad)
+		banco.aniadirPropiedad(self)
 	}
 	method duenio(){
 		return duenio
 	}
-	method paso(unJugador)
+	method paso(unJugador){}
 	method cayo(unJugador){
-		if(duenio == banco)		self.esCompradaPor(unJugador)
-		if(duenio != unJugador)		self.pagarRenta(unJugador)
+		if(duenio == banco)		unJugador.estrategiaDeCompraPara(self)
+		if(duenio != unJugador)	self.pagarRenta(unJugador)
+	}
+	method esCompradaPor(unJugador) {
+		unJugador.pagarA(duenio,valorPropiedad)
+		self.compra(unJugador)
+	}
+	method compra(unJugador) {
+		unJugador.comprar(self)
+		duenio = unJugador
 	}
 	method pagarRenta(unJugador)
+	method hipotecar() {
+		valorPropiedad = valorPropiedad * 1.5
+		banco.pagarA(duenio,self.valorHipoteca())
+		self.compra(banco)
+	} 
+	method valorHipoteca()  =		valorPropiedad / 2 + self.plus()
+	method plus() 			=		return 0
 }
 
 class Campo inherits Propiedad{
@@ -93,20 +119,25 @@ class Campo inherits Propiedad{
 	var precioDeConstruccion
 	var cantidadDeEstancias = 0
 		
-	constructor (unaProvincia,valorRenta, valorEstancia, precioDeCompraInicial) = 
+	constructor (valorRenta, valorEstancia, precioDeCompraInicial) = 
 		super(precioDeCompraInicial){
 		renta = valorRenta
-		provincia = unaProvincia
 		precioDeConstruccion = valorEstancia
+	}
+	method aniadirProvincia(unaProvincia) {
+		provincia = unaProvincia
 	}
 	method estancias() {
 		return cantidadDeEstancias
 	}
 	method agregarEstancia(){
-		if (provincia.puedeConstruir(duenio, self)){
+		if (self.sePuedeConstruir()){
 			cantidadDeEstancias += 1
 			duenio.pagar(precioDeConstruccion)
 			}
+	}
+	method sePuedeConstruir() {
+		return provincia.sePuedeConstruirEn(self)
 	}
 	method sosEmpresa() {
 		return false
@@ -117,6 +148,9 @@ class Campo inherits Propiedad{
 	override method pagarRenta(unJugador) {
 		var deuda = self.rentaPara(unJugador)
 		unJugador.pagarA(duenio,deuda)
+	}
+	override method plus() {
+		return cantidadDeEstancias * precioDeConstruccion / 2
 	}
 }
 
@@ -137,71 +171,128 @@ class Empresa inherits Propiedad {
 }
 
 class Jugador {
-	var dinero
+	var dinero = 5000000
 	var propiedades = #{}
 	var casilleroActual = salida
+	var estaPreso = false
+	var sacoDoble = false
+	var turnosPreso
+	var estrategiaDeCompra = standar
 	
 	constructor(montoInicial) {
 		dinero = montoInicial
 	}
-	method pagar(monto){
-		dinero -= monto
-	}
 	method comprar(unaPropiedad) {
 		propiedades.add(unaPropiedad)
-		unaPropiedad.esCompradaPor(self)
 	}
 	method cantidadDeEmpresas() {
 		return propiedades.count({propiedad => propiedad.sosEmpresa()})
 	}
 	method tirarDados() {
-		return [7,8,9,10,11,12].anyOne()
+		var dado1 = [1,2,3,4,5,6].anyOne()
+		var dado2 = [1,2,3,4,5,6].anyOne()
+		
+		if (estaPreso && self.esDoble(dado1,dado2)) {
+			self.salePorSacarDoble()
+			return [2,3,4,5,6,7,8,9,10,11,12].anyOne()
+		}
+		if (estaPreso && turnosPreso <= 3) {
+			self.siguePreso()
+			return 0
+		}
+		if (sacoDoble && self.esDoble(dado1, dado2)) {
+			self.vaPreso()
+			return 0
+			}
+		else {
+			estaPreso = false
+			sacoDoble = self.esDoble(dado1,dado2)
+			return dado1 + dado2
+			}
+	}
+	method salePorSacarDoble() {
+		estaPreso = false
+	}
+	method esDoble(numero1,numero2) {
+		return numero1 == numero2
+	}
+	method siguePreso() {
+		turnosPreso += 1
+	}
+	method vaPreso() {
+			turnosPreso = 0
+			estaPreso = true
+			sacoDoble = false
+			casilleroActual = prision
 	}
 	method pagarA(acreedor, monto) {
-		self.puedePagar(monto)
+		if (self.leAlcanzaPara(monto)) {
+			self.pagoA(acreedor,monto)
+		}
+		else {
+			self.hipotecar()
+			self.pagoA(acreedor,monto)
+		}
+	}
+	method pagoA(acreedor,monto) {
 		self.pagar(monto)
 		acreedor.cobrar(monto)
 	}
+	method leAlcanzaPara(monto) {
+		return dinero >= monto
+	}
+	method hipotecar() {
+		propiedades.forEach({propiedad => propiedad.hipotecar()})
+		propiedades.clear()
+	}
 	method puedePagar(monto){
-		if (monto <= dinero)
+		if (!self.leAlcanzaPara(monto))		
 		error.throwWithMessage("No puede pagar")
+	}
+	method pagar(monto){
+		self.puedePagar(monto)
+		dinero -= monto
 	}
 	method cobrar(monto) {
 		dinero += monto
 	}
 	method moverseSobre(casilleros) {
 		casilleros.forEach({propiedad => propiedad.paso(self)})
-		casilleros.asList()
 		casilleroActual = casilleros.last()
 		casilleroActual.cayo(self)
 	}
 	method casilleroActual() {
 		return casilleroActual
 	}
+	method dinero() {
+		return dinero
+	}
+	method compro(propiedad) {
+		return propiedades.contains(propiedad)
+	}
+	method sacoDoble(bool) {
+		sacoDoble = bool
+	}
+	method estrategiaDeCompraPara(unaPropiedad) {
+		estrategiaDeCompra.cayoEn(unaPropiedad,self)
+	}
+	method estrategiaDeCompra(unaEstrategia) {
+		estrategiaDeCompra = unaEstrategia
+	}
 }
 
 object banco {
-	var dinero
 	var propiedades = #{}
 	
-	method pagar(monto){
-		dinero -= monto
-	}
 	method comprar(unaPropiedad) {
 		propiedades.add(unaPropiedad)
-		unaPropiedad.esCompradaPor(self)
 	}
 	method pagarA(acreedor, monto) {
-		self.puedePagar(monto)
-		self.pagar(monto)
 		acreedor.cobrar(monto)
 	}
-	method puedePagar(monto){
-		if (monto <= dinero)
-		error.throwWithMessage("No puede pagar")
-	}
-	method cobrar(monto) {
-		dinero += monto
+	method cobrar(monto) {}
+	method aniadirPropiedad(unaPropiedad) {
+		propiedades.add(unaPropiedad)
 	}
 }
 
@@ -218,5 +309,70 @@ object premioGanadero {
 	method paso(unJugador){}
 	method cayo(unJugador){
 		unJugador.cobrar(2500)
+	}
+}
+
+object prision {
+	
+	method paso(unJugador){}
+	method cayo(unJugador){}
+}
+
+object standar {
+	method cayoEn(unaPropiedad, unJugador) {
+		unaPropiedad.esCompradaPor(unJugador)
+	}
+}
+
+object garca {
+	method cayoEn(unaPropiedad,unJugador) {
+		if (unaPropiedad.sosEmpresa())	self.cayoEnEmpresa(unaPropiedad,unJugador)
+		else 							self.cayoEnCampo(unaPropiedad,unJugador)
+		}
+	method cayoEnEmpresa(unaEmpresa,unJugador) {
+		if (self.dueniosDeLasDemasEmpresasEsDistintoA(unJugador)){
+			unaEmpresa.esCompradaPor(unJugador)
+		}
+	}
+	method dueniosDistintosQue(unJugador,unosDuenios) {
+		return unosDuenios.any({duenio => duenio != unJugador && duenio != banco})
+	}
+	method dueniosDeLasDemasEmpresasEsDistintoA(unJugador) {
+		return self.dueniosDistintosQue(unJugador,tablero.dueniosDeEmpresas())
+			}
+	method yaHayCamposOcupadosPorOtrosJugadoresQue(unJugador,unaProvincia) {
+		return self.dueniosDistintosQue(unJugador,unaProvincia.duenios())
+	}
+	method cayoEnCampo(unCampo,unJugador) {
+		if (self.yaHayCamposOcupadosPorOtrosJugadoresQue(unJugador,unCampo.provincia())) {
+				unCampo.esCompradaPor(unJugador)
+		}
+	}
+}
+
+object imperialista {
+	method cayoEn(unaPropiedad,unJugador) {
+		if (unaPropiedad.sosEmpresa())	self.cayoEnEmpresa(unaPropiedad,unJugador)
+		else 							self.cayoEnCampo(unaPropiedad,unJugador)
+		}
+	method cayoEnCampo(unCampo,unJugador) {
+		if (self.elJugadorYaTieneAlgunCampoEn(unJugador,unCampo.provincia())
+			||	self.todosLosCamposNoTieneDuenioEn(unCampo.provincia())) {
+				unCampo.esCompradaPor(unJugador)
+			}
+	}
+	method cayoEnEmpresa(unaEmpresa,unJugador) {
+		if (self.todasLasEmpresasNoTienenDuenio()) {
+			unaEmpresa.esCompradaPor(unJugador)
+		}
+	}
+	method todasLasEmpresasNoTienenDuenio() {
+		return tablero.dueniosDeEmpresas() == #{banco}
+	}
+	method elJugadorYaTieneAlgunCampoEn(unJugador,unaProvincia) {
+		return unaProvincia.any({duenio => duenio == unJugador})
+	}
+	method todosLosCamposNoTieneDuenioEn(unaProvincia) {
+		return unaProvincia.duenios() == #{banco}
 	}
 }
